@@ -3,7 +3,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
 # Configurazione
-API_KEY = '962922fc1b4b34437f216732a0f2153c'
+API_KEY = 'b366105bf42831dcfda69ad2df55442a'
 TELEGRAM_TOKEN = '8793415569:AAEg57jKGSzGtNC9K7mW3j1Gt0fH0cJM4sU'
 CHAT_ID = '-1003710972300'
 HEADERS = {'x-apisports-key': API_KEY}
