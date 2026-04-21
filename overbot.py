@@ -4,43 +4,28 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-# 1. SERVER DI SERVIZIO PER RENDER (Corretto per evitare l'errore 501)
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html')
-        self.end_headers()
-        self.wfile.write(b"Gattone Online")
+# Server per tenere in vita il servizio su Render
+threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 10000), lambda *args: BaseHTTPRequestHandler(*args)).serve_forever(), daemon=True).start()
 
-def run_server():
-    server = HTTPServer(('0.0.0.0', 10000), SimpleHandler)
-    server.serve_forever()
-
-# Avvia il server in un thread separato
-threading.Thread(target=run_server, daemon=True).start()
-
-# 2. CONFIGURAZIONE
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-API_KEY = os.getenv("API_KEY")
 
-print("--- IL GATTONE SI STA SVEGLIANDO ---")
+print("--- DIAGNOSTICA AVVIATA ---")
+print(f"Token presente: {'SI' if TOKEN else 'NO'}")
+print(f"Chat ID presente: {'SI' if CHAT_ID else 'NO'}")
 
-def test_telegram():
+def invia_test():
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": "🚩 CONNESSIONE RIUSCITA! Il bot è ora attivo e funzionante."}
     try:
-        r = requests.post(url, json=payload)
-        print(f"Test Telegram: {r.status_code}")
+        r = requests.post(url, json={"chat_id": CHAT_ID, "text": "🐈 GATTone: Se leggi questo, funziona tutto!"}, timeout=10)
+        if r.status_code == 200:
+            print("✅ MESSAGGIO INVIATO CON SUCCESSO!")
+        else:
+            print(f"❌ ERRORE TELEGRAM: {r.status_code} - {r.text}")
     except Exception as e:
-        print(f"Errore Telegram: {e}")
+        print(f"💥 ERRORE DI CONNESSIONE: {e}")
 
-# Invia un messaggio subito all'avvio
-test_telegram()
-
-# 3. CICLO DI CONTROLLO (Ogni 60 secondi)
+# Prova a inviare ogni 30 secondi
 while True:
-    print(f"[{time.strftime('%H:%M:%S')}] Scansione in corso...")
-    # Qui il bot lavora...
-    time.sleep(60)
-    
+    invia_test()
+    time.sleep(30)
