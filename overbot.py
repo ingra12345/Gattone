@@ -1,39 +1,49 @@
-import requests, time, sys, datetime, os
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
+import os
+import requests
+import time
+from datetime import datetime, timedelta
 
-# Configurazione
-API_KEY = 'b366105bf42831dcfda69ad2df55442a'
-TELEGRAM_TOKEN = '8793415569:AAEg57jKGSzGtNC9K7mW3j1Gt0fH0cJM4sU'
-CHAT_ID = '-1003710972300'
-HEADERS = {'x-apisports-key': API_KEY}
+# Configurazione dalle variabili d'ambiente di Render
+API_KEY = os.getenv("API_KEY")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-seg_inviati = []
+def invia_telegram(messaggio):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": messaggio, "parse_mode": "Markdown"}
+    requests.post(url, json=payload)
 
-class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b'Gattone e attivo')
-
-def run_finto_server():
-    port = int(os.environ.get("PORT", 8080))
-    httpd = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
-    httpd.serve_forever()
-
-def scansione():
-    global seg_inviati
-    # Orario italiano (UTC+2)
-    ora_it = (datetime.datetime.utcnow() + datetime.timedelta(hours=2)).hour
+def analizza_partite():
+    # URL AGGRESSIVO: Prende TUTTE le partite live nel mondo
+    url = "https://v3.football.api-sports.io/fixtures?live=all"
+    headers = {"x-apisports-key": API_KEY}
     
-    if ora_it < 7:
-        print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Gattone dorme (Ora: {ora_it})")
-        return
-
-    print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Analisi mercati...")
     try:
-        r = requests.get("https://v3.football.api-sports.io/fixtures?live=all", headers=HEADERS, timeout=15)
-        res = r.json()
+        response = requests.get(url, headers=headers)
+        data = response.json()
+        fixtures = data.get("response", [])
+        
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Analisi mercati...")
+        print(f"Match Live monitorati: {len(fixtures)}")
+
+        for match in fixtures:
+            home = match['teams']['home']['name']
+            away = match['teams']['away']['name']
+            minuto = match['fixture']['status']['elapsed']
+            
+            # FILTRO: Minuto tra 15 e 85
+            if 15 <= minuto <= 85:
+                # Invia un messaggio di prova per ogni partita trovata così siamo sicuri che funziona!
+                msg = f"⚽ *Match Identificato*\n{home} vs {away}\nMinuto: {minuto}'"
+                invia_telegram(msg)
+                
+    except Exception as e:
+        print(f"Errore: {e}")
+
+# Ciclo infinito
+while True:
+    analizza_partite()
+    time.sleep(600) # Controlla ogni 10 minuti
         partite = res.get('response', [])
         print(f"Match Live: {len(partite)}")
 
