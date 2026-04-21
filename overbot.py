@@ -4,28 +4,33 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-# Server per tenere in vita il servizio su Render
-threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 10000), lambda *args: BaseHTTPRequestHandler(*args)).serve_forever(), daemon=True).start()
+# 1. SERVER MINIMO (Evita l'errore 501)
+class S(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.end_headers()
+        self.wfile.write(b"Gattone OK")
 
+def run():
+    httpd = HTTPServer(('0.0.0.0', 10000), S)
+    httpd.serve_forever()
+
+threading.Thread(target=run, daemon=True).start()
+
+# 2. CONFIGURAZIONE
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-print("--- DIAGNOSTICA AVVIATA ---")
-print(f"Token presente: {'SI' if TOKEN else 'NO'}")
-print(f"Chat ID presente: {'SI' if CHAT_ID else 'NO'}")
+print("--- IL GATTONE E' PARTITO ---")
 
-def invia_test():
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    try:
-        r = requests.post(url, json={"chat_id": CHAT_ID, "text": "🐈 GATTone: Se leggi questo, funziona tutto!"}, timeout=10)
-        if r.status_code == 200:
-            print("✅ MESSAGGIO INVIATO CON SUCCESSO!")
-        else:
-            print(f"❌ ERRORE TELEGRAM: {r.status_code} - {r.text}")
-    except Exception as e:
-        print(f"💥 ERRORE DI CONNESSIONE: {e}")
-
-# Prova a inviare ogni 30 secondi
+# 3. CICLO DI INVIO
 while True:
-    invia_test()
+    try:
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        r = requests.post(url, json={"chat_id": CHAT_ID, "text": "🐈 GATTONE: Se leggi questo, la connessione è OK!"})
+        print(f"[{time.strftime('%H:%M:%S')}] Tentativo invio... Stato: {r.status_code}")
+    except Exception as e:
+        print(f"Errore: {e}")
     time.sleep(30)
+    
