@@ -4,24 +4,43 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-# Server obbligatorio
-threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 10000), lambda *args: BaseHTTPRequestHandler(*args)).serve_forever(), daemon=True).start()
+# 1. SERVER DI SERVIZIO PER RENDER (Corretto per evitare l'errore 501)
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.end_headers()
+        self.wfile.write(b"Gattone Online")
 
+def run_server():
+    server = HTTPServer(('0.0.0.0', 10000), SimpleHandler)
+    server.serve_forever()
+
+# Avvia il server in un thread separato
+threading.Thread(target=run_server, daemon=True).start()
+
+# 2. CONFIGURAZIONE
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+API_KEY = os.getenv("API_KEY")
 
-def test_immediato():
-    print("--- TENTATIVO INVIO MESSAGGIO ---")
+print("--- IL GATTONE SI STA SVEGLIANDO ---")
+
+def test_telegram():
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": "🚩 CONNESSIONE RIUSCITA! Il bot è ora attivo e funzionante."}
     try:
-        r = requests.post(url, json={"chat_id": CHAT_ID, "text": "🚩 ATTENZIONE: Se leggi questo, il bot è finalmente connesso!"})
-        print(f"Risposta Telegram: {r.status_code}")
+        r = requests.post(url, json=payload)
+        print(f"Test Telegram: {r.status_code}")
     except Exception as e:
-        print(f"Errore invio: {e}")
+        print(f"Errore Telegram: {e}")
 
-test_immediato()
+# Invia un messaggio subito all'avvio
+test_telegram()
 
+# 3. CICLO DI CONTROLLO (Ogni 60 secondi)
 while True:
-    print("Bot in attesa...")
+    print(f"[{time.strftime('%H:%M:%S')}] Scansione in corso...")
+    # Qui il bot lavora...
     time.sleep(60)
     
