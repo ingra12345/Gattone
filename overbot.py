@@ -10,7 +10,7 @@ API_KEY = os.getenv("API_KEY")
 TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TGID = os.getenv("TELEGRAM_CHAT_ID")
 
-# --- SERVER PER EVITARE ERRORI SU RENDER ---
+# Trucco per Render (Porta 10000)
 class HealthCheck(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -23,38 +23,34 @@ def run_server():
 
 threading.Thread(target=run_server, daemon=True).start()
 
-# --- LOGICA BOT ---
 def analizza():
-    if not API_KEY or not TG_TOKEN:
-        print("❌ Variabili mancanti su Render!")
-        return
-
-    url = "https://api-football-v1.p.rapidapi.com/v3/fixtures"
+    # URL specifico dell'API che hai trovato (Free API Live Football)
+    url = "https://free-api-live-football-data.p.rapidapi.com/football-current-live"
+    
     headers = {
         "X-RapidAPI-Key": API_KEY,
-        "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
+        "X-RapidAPI-Host": "free-api-live-football-data.p.rapidapi.com"
     }
     
     try:
-        res = requests.get(url, headers=headers, params={"live": "all"}, timeout=10)
+        res = requests.get(url, headers=headers, timeout=10)
         data = res.json()
         
-        if data.get("errors"):
-            print(f"⚠️ Errore API: {data['errors']}")
-            return
-
+        # Questa API mette le partite dentro 'status' o 'response'
+        # Proviamo a leggere la risposta
         partite = data.get("response", [])
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Scansione: {len(partite)} match.")
-
+        
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Scansione: trovati {len(partite)} match.")
+        
         if len(partite) > 0:
-            msg = f"🐈 Gattone Online! Vedo {len(partite)} partite."
+            msg = f"✅ Gattone Online!\nSta monitorando {len(partite)} partite live."
             requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage", 
                           json={"chat_id": TGID, "text": msg})
     except Exception as e:
         print(f"💥 Errore: {e}")
 
-# --- AVVIO ---
-print("🚀 Avvio in corso...")
+# Avvio
+print("🚀 Gattone Bot avviato su Smart API...")
 while True:
     analizza()
     time.sleep(600)
