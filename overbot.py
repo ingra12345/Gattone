@@ -4,45 +4,59 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-# 1. SERVER CHE RISPONDE A RENDER (GESTISCE HEAD E GET)
+# Server per Render (Porta 10000)
 class RenderHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Gattone is Live")
-        
+        self.wfile.write(b"Gattone Operativo")
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
 
-def run_server():
-    server = HTTPServer(('0.0.0.0', 10000), RenderHandler)
-    server.serve_forever()
+threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 10000), RenderHandler).serve_forever(), daemon=True).start()
 
-# Avvio server in background
-threading.Thread(target=run_server, daemon=True).start()
-
-# 2. CONFIGURAZIONE (CARICATA DA RENDER)
+# Configurazione
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+API_KEY = os.getenv("API_KEY")
 
-print("--- IL GATTONE SI STA SVEGLIANDO ---")
+print(f"--- AVVIO BOT SU CHAT {CHAT_ID} ---")
 
-# 3. CICLO DI INVIO MESSAGGI
-while True:
+def analizza():
+    url = "https://free-api-live-football-data.p.rapidapi.com/football-current-live"
+    headers = {
+        "X-RapidAPI-Key": API_KEY,
+        "X-RapidAPI-Host": "free-api-live-football-data.p.rapidapi.com"
+    }
+    
     try:
-        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        payload = {"chat_id": CHAT_ID, "text": "✅ GATTONE SBLOCCATO! Se leggi questo, il bot sta finalmente lavorando."}
-        r = requests.post(url, json=payload, timeout=10)
+        # 1. Recupero Dati
+        res = requests.get(url, headers=headers, timeout=10)
+        data = res.json()
+        partite = data.get("response", [])
         
-        # Stampiamo nei log cosa succede
-        print(f"[{time.strftime('%H:%M:%S')}] Tentativo invio Telegram... Stato: {r.status_code}")
+        # 2. Invio Testo a Telegram
+        testo = f"⚽ **Gattone Update**\nPartite live trovate: {len(partite)}"
         
-        if r.status_code != 200:
-            print(f"⚠️ Dettaglio errore: {r.text}")
-            
+        # Se ci sono partite, aggiungile al messaggio
+        if len(partite) > 0:
+            for p in partite[:5]: # Vediamo le prime 5
+                home = p.get('homeTeam', {}).get('name', 'Casa')
+                away = p.get('awayTeam', {}).get('name', 'Fuori')
+                score = p.get('status', {}).get('scoreStr', '0-0')
+                testo += f"\n• {home} {score} {away}"
+
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                      json={"chat_id": CHAT_ID, "text": testo, "parse_mode": "Markdown"})
+        
+        print(f"Inviato a Telegram! Match: {len(partite)}")
+
     except Exception as e:
-        print(f"💥 Errore connessione: {e}")
-        
-    time.sleep(30)
+        print(f"Errore: {e}")
+
+# Ciclo ogni 10 minuti
+while True:
+    analizza()
+    time.sleep(600)
     
