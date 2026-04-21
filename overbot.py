@@ -5,35 +5,43 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-# --- CONFIGURAZIONE VARIABILI ---
-# Questi dati vengono letti direttamente da Render (sezione Environment)
+# --- CONFIGURAZIONE ---
 API_KEY = os.getenv("API_KEY")
 TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TGID = os.getenv("TELEGRAM_CHAT_ID")
 
-# --- TRUCCO PER RENDER (EVITA L'ERRORE ROSSO) ---
-class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+# --- SERVER PER RENDER (EVITA ERRORI ROSSI) ---
+class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Gattone e' attivo e sta monitorando!")
+        self.wfile.write(b"Gattone is Alive")
 
-def run_server():
-    # Render usa la porta 10000 di default
-    server = HTTPServer(('0.0.0.0', 10000), SimpleHTTPRequestHandler)
-    print("Server di keep-alive avviato sulla porta 10000")
+def run_health_server():
+    server = HTTPServer(('0.0.0.0', 10000), HealthCheckHandler)
     server.serve_forever()
 
-# Avvia il server in un thread separato per non bloccare il bot
-threading.Thread(target=run_server, daemon=True).start()
+threading.Thread(target=run_health_server, daemon=True).start()
 
-# --- LOGICA DEL BOT ---
-def analizza_partite():
-    # URL ufficiale per il calcio su RapidAPI
+# --- FUNZIONE DI ANALISI ---
+def analizza():
+    # Verifichiamo se le variabili sono caricate
+    if not API_KEY or not TG_TOKEN:
+        print("❌ ERRORE: Variabili API_KEY o TELEGRAM_BOT_TOKEN mancanti su Render!")
+        return
+
     url = "https://api-football-v1.p.rapidapi.com/v3/fixtures"
-    
     headers = {
         "X-RapidAPI-Key": API_KEY,
+        "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
+    }
+    
+    try:
+        # Chiamata API per i match LIVE
+        res = requests.get(url, headers=headers, params={"live": "all"}, timeout=10)
+        data = res.json()
+        
+        #
         "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
     }
     
