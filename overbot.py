@@ -5,7 +5,7 @@ import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-# --- SERVER DI EMERGENZA PER RENDER ---
+# --- SERVER PER RENDER ---
 class HealthCheck(BaseHTTPRequestHandler):
     def do_GET(self): 
         self.send_response(200); self.end_headers(); self.wfile.write(b"Gattone Online")
@@ -22,56 +22,55 @@ def log(msg):
 def invia_telegram(testo):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     try:
-        r = requests.post(url, json={"chat_id": CHAT_ID, "text": testo, "parse_mode": "Markdown"}, timeout=10)
-        log(f"Telegram status: {r.status_code}")
+        requests.post(url, json={"chat_id": CHAT_ID, "text": testo, "parse_mode": "Markdown"}, timeout=10)
     except Exception as e:
         log(f"Errore Telegram: {e}")
 
 def analizza_partite():
+    # Endpoint corretto per tutte le partite
+    url = "https://free-api-live-football-data.p.rapidapi.com/football-get-all-matches"
     headers = {
         "X-RapidAPI-Key": API_KEY,
         "X-RapidAPI-Host": "free-api-live-football-data.p.rapidapi.com"
     }
     
     try:
-        log("🔍 Tentativo recupero dati...")
-        # Proviamo a prendere i campionati principali (più probabile che abbiano dati)
-        url = "https://free-api-live-football-data.p.rapidapi.com/football-all-matches-by-date"
-        # Usiamo la data di oggi in formato YYYYMMDD
+        log("🔍 Recupero partite con nuovo endpoint...")
+        # L'API richiede il giorno attuale
         oggi = time.strftime("%Y%m%d")
-        res = requests.get(url, headers=headers, params={"date": oggi}, timeout=15)
-        
+        res = requests.get(url, headers=headers, params={"day": oggi}, timeout=15)
         data = res.json()
-        # Debug: stampiamo nei log la struttura per capire cosa arriva
-        log(f"Risposta API: {str(data)[:100]}...") 
-
-        partite = data.get("response", {}).get("matches", [])
+        
+        # Estraiamo le partite dalla nuova struttura dell'API
+        partite = data.get("response", {}).get("status", {}).get("allMatches", [])
         
         if not partite:
-            # Se la lista è vuota, forse l'API vuole un'altra data o la chiave è errata
-            log("❌ L'API ha risposto con 0 partite. Verifica API_KEY su Render.")
+            log("⚠️ Nessuna partita trovata. Verifica se l'API_KEY è attiva su RapidAPI.")
             return
 
-        msg = f"⚽ **AGGIORNAMENTO PARTITE** ⚽\n\n"
-        # Filtriamo solo le partite più importanti (prime 10)
-        per_messaggio = partite[:10]
-        for p in per_messaggio:
+        msg = f"⚽ **GATTONE FOOTBALL REPORT** ⚽\n\n"
+        # Prendiamo le prime 10 partite per non intasare Telegram
+        count = 0
+        for p in partite:
+            if count >= 10: break
             home = p.get('homeTeam', {}).get('name', 'N/A')
             away = p.get('awayTeam', {}).get('name', 'N/A')
+            # Recupero del punteggio o dell'orario
             status = p.get('status', {}).get('type', 'N/A')
-            # Se è live mostra il punteggio, altrimenti l'ora
             score = p.get('status', {}).get('scoreStr', 'vs')
+            
             msg += f"• {home} {score} {away} ({status})\n"
+            count += 1
 
         invia_telegram(msg)
-        log("✅ Messaggio inviato!")
+        log(f"✅ Inviate {count} partite!")
 
     except Exception as e:
-        log(f"⚠️ Errore durante il recupero: {e}")
+        log(f"⚠️ Errore API: {e}")
 
-# --- LOGICA DI AVVIO ---
-log("🚀 Avvio sistema...")
-invia_telegram("🤖 **GATTONE REBOOT**\nSe non ricevi partite tra 1 minuto, la tua API_KEY potrebbe essere scaduta o errata.")
+# --- AVVIO ---
+log("🚀 Sistema riavviato con nuovi endpoint!")
+invia_telegram("🤖 **GATTONE AGGIORNATO**\nEndpoint corretti. Controllo partite ogni 15 minuti.")
 
 while True:
     analizza_partite()
