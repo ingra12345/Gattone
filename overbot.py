@@ -5,35 +5,29 @@ import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-# --- SERVER DI CONTROLLO ---
+# --- SERVER PER MANTENERE RENDER ATTIVO ---
 class HealthCheck(BaseHTTPRequestHandler):
     def do_GET(self): 
         self.send_response(200); self.end_headers(); self.wfile.write(b"Gattone Online")
+    def do_HEAD(self): 
+        self.send_response(200); self.end_headers()
 
 threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 10000), HealthCheck).serve_forever(), daemon=True).start()
 
+# --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 API_KEY = os.getenv("API_KEY")
 
 def log(msg):
-    print(f"[{time.strftime('%H:%M:%S')}] {msg}"); sys.stdout.flush()
+    print(f"[{time.strftime('%H:%M:%S')}] {msg}")
+    sys.stdout.flush()
 
 def invia_telegram(testo):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": testo, "parse_mode": "Markdown"}
     try:
-        r = requests.post(url, json=payload, timeout=10)
-        log(f"Risposta Telegram: {r.status_code}")
-        return r.status_code == 200
-    except Exception as e:
-        log(f"Errore invio: {e}")
-        return False
-
-def analizza_partite():
-    url = "https://free-api-live-football-data.p.rapidapi.com/football-current-live"
-    headers = {"X-RapidAPI-Key": API_KEY, "X-RapidAPI-Host": "free-api-live-football-data.p.rapidapi.com"}
-    
+        r
     try:
         log("🔍 Controllo partite live...")
         res = requests.get(url, headers=headers, timeout=15)
