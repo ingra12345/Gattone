@@ -5,65 +5,93 @@ import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-# --- SERVER PER RENDER ---
+# --- SERVER DI CONTROLLO PER RENDER (Evita lo standby) ---
 class HealthCheck(BaseHTTPRequestHandler):
     def do_GET(self): 
-        self.send_response(200); self.end_headers(); self.wfile.write(b"Gattone Online")
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Gattone Online")
 
-threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 10000), HealthCheck).serve_forever(), daemon=True).start()
+def run_server():
+    # Usa la porta 10000 come richiesto da Render
+    server = HTTPServer(('0.0.0.0', 10000), HealthCheck)
+    server.serve_forever()
 
+threading.Thread(target=run_server, daemon=True).start()
+
+# --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 API_KEY = os.getenv("API_KEY")
 
 def log(msg):
-    print(f"[{time.strftime('%H:%M:%S')}] {msg}"); sys.stdout.flush()
+    print(f"[{time.strftime('%H:%M:%S')}] {msg}")
+    sys.stdout.flush()
 
 def invia_telegram(testo):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID, 
+        "text": testo, 
+        "parse_mode": "Markdown"
+    }
     try:
-        requests.post(url, json={"chat_id": CHAT_ID, "text": testo, "parse_mode": "Markdown"}, timeout=10)
-    except: pass
+        requests.post(url, json=payload, timeout=10)
+    except Exception as e:
+        log(f"Errore Telegram: {e}")
 
 def analizza_partite():
-    # URL AGGIORNATO: Questo è quello standard per i risultati del giorno
-    url = "https://free-api-live-football-data.p.rapidapi.com/football-get-all-matches-by-date"
+    # Endpoint corretto per la tua API specifica
+    url = "https://free-api-live-football-data.p.rapidapi.com/football-get-all-matches"
     headers = {
         "X-RapidAPI-Key": API_KEY,
         "X-RapidAPI-Host": "free-api-live-football-data.p.rapidapi.com"
     }
     
     try:
+        log("🔍 Controllo partite in corso...")
+        # Aggiungiamo il parametro della data per sicurezza
         oggi = time.strftime("%Y%m%d")
-        log(f"🔍 Cerco match per la data: {oggi}")
         res = requests.get(url, headers=headers, params={"date": oggi}, timeout=15)
-        data = res.json()
         
-        # Struttura dati per questo specifico endpoint
+        if res.status_code != 200:
+            log(f"⚠️ Errore API (Codice {res.status_code}): {res.text}")
+            return
+
+        data = res.json()
+        # Estraiamo i match dalla risposta
         partite = data.get("response", {}).get("matches", [])
         
         if not partite:
-            log(f"⚠️ Risposta API senza match. Dettaglio: {str(data)[:100]}")
+            log(f"⚠️ Nessuna partita trovata nel database per oggi ({oggi}).")
             return
 
-        msg = f"⚽ **GATTONE REPORT** ⚽\nMatch di oggi:\n"
+        messaggio = f"⚽ **GATTONE REPORT** ⚽\nPartite di oggi:\n"
+        
+        # Prendiamo le prime 10 partite per non fare messaggi troppo lunghi
+        count = 0
         for p in partite[:10]:
             home = p.get('homeTeam', {}).get('name', 'N/A')
             away = p.get('awayTeam', {}).get('name', 'N/A')
+            # Cerchiamo il punteggio o l'orario
+            status = p.get('status', {}).get('type', 'N/A')
             score = p.get('status', {}).get('scoreStr', 'vs')
-            msg += f"\n• {home} {score} {away}"
+            
+            messaggio += f"\n• {home} **{score}** {away} ({status})"
+            count += 1
 
-        invia_telegram(msg)
-        log(f"✅ Inviato messaggio con {len(partite[:10])} partite!")
+        invia_telegram(messaggio)
+        log(f"✅ Inviato messaggio con {count} partite!")
 
     except Exception as e:
-        log(f"⚠️ Errore: {e}")
+        log(f"⚠️ Errore critico: {e}")
 
-# --- AVVIO ---
-log("🚀 Bot in fase di test...")
-invia_telegram("🔄 **TEST AVVIATO**\nControllo database in corso...")
+# --- AVVIO BOT ---
+log("🚀 Bot avviato! In attesa di dati...")
+invia_telegram("🤖 **IL GATTONE È TORNATO**\nControllo database avviato!")
 
 while True:
     analizza_partite()
+    # Controlla ogni 15 minuti
     time.sleep(900)
     
