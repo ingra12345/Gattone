@@ -16,7 +16,6 @@ def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}"); sys.stdout.flush()
 
 def analizza_partite():
-    # URL ESATTO preso dal tuo screenshot di RapidAPI
     url = "https://free-api-live-football-data.p.rapidapi.com/football-current-live"
     headers = {
         "X-RapidAPI-Key": API_KEY,
@@ -24,36 +23,39 @@ def analizza_partite():
     }
     
     try:
-        log("🔍 Ricerca partite in corso...")
+        log("🔍 Ricerca partite live...")
         res = requests.get(url, headers=headers, timeout=15)
         data = res.json()
         
-        if res.status_code != 200:
-            log(f"❌ Errore API: {data.get('message')}")
-            return
+        # Gestione flessibile della risposta
+        partite = []
+        if isinstance(data.get("response"), list):
+            partite = data.get("response")
+        elif isinstance(data.get("response"), dict):
+            partite = data.get("response", {}).get("matches", [])
 
-        # Questa API restituisce i dati dentro 'response'
-        partite = data.get("response", [])
-        
         if not partite:
-            log("⚠️ Nessuna partita live in questo momento.")
+            log("⚠️ Nessuna partita live al momento.")
             return
 
-        messaggio = "⚽ **GATTONE LIVE REPORT** ⚽\n"
-        # Prendiamo le prime 10 partite live
-        for p in partite[:10]:
+        msg = "⚽ **GATTONE LIVE REPORT** ⚽\n"
+        
+        # Prendiamo le prime 10 partite in modo sicuro
+        for i, p in enumerate(partite):
+            if i >= 10: break
             home = p.get('homeTeam', {}).get('name', 'N/A')
             away = p.get('awayTeam', {}).get('name', 'N/A')
             score = p.get('status', {}).get('scoreStr', 'vs')
-            messaggio += f"\n• {home} **{score}** {away}"
+            msg += f"\n• {home} **{score}** {away}"
 
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={"chat_id": CHAT_ID, "text": messaggio, "parse_mode": "Markdown"})
-        log(f"✅ Inviate {len(partite[:10])} partite!")
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"})
+        log(f"✅ Inviate {i+1} partite!")
 
     except Exception as e:
-        log(f"⚠️ Errore: {e}")
+        log(f"⚠️ Errore durante l'analisi: {e}")
 
-log("🚀 Bot avviato correttamente!")
+log("🚀 Bot avviato e pronto!")
 while True:
     analizza_partite()
-    time.sleep(900) # Controlla ogni 15 minuti
+    time.sleep(900)
+    
