@@ -5,35 +5,61 @@ import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-# Forza la stampa immediata nei log di Render
-def log_print(msg):
-    print(msg)
-    sys.stdout.flush()
-
-# Server per mantenere il servizio "Live"
+# --- SERVER PER RENDER ---
 class HealthCheck(BaseHTTPRequestHandler):
-    def do_GET(self): self.send_response(200); self.end_headers(); self.wfile.write(b"OK")
+    def do_GET(self): self.send_response(200); self.end_headers(); self.wfile.write(b"Gattone Online")
     def do_HEAD(self): self.send_response(200); self.end_headers()
 
 threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 10000), HealthCheck).serve_forever(), daemon=True).start()
 
+# --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+API_KEY = os.getenv("API_KEY")
 
-log_print("--- AVVIO TEST AGGRESSIVO ---")
-log_print(f"Target Chat: {CHAT_ID}")
+def log(msg):
+    print(f"[{time.strftime('%H:%M:%S')}] {msg}")
+    sys.stdout.flush()
+
+def analizza_partite():
+    url = "https://free-api-live-football-data.p.rapidapi.com/football-current-live"
+    headers = {
+        "X-RapidAPI-Key": API_KEY,
+        "X-RapidAPI-Host": "free-api-live-football-data.p.rapidapi.com"
+    }
+    
+    try:
+        log("Controllo partite live...")
+        res = requests.get(url, headers=headers, timeout=15)
+        data = res.json()
+        partite = data.get("response", [])
+        
+        if not partite:
+            log("Nessuna partita live al momento.")
+            return
+
+        messaggio = f"⚽ **GATTONE LIVE UPDATE** ⚽\n\n"
+        messaggio += f"Trovate {len(partite)} partite in corso:\n"
+        
+        # Prende le prime 10 partite per non fare un messaggio troppo lungo
+        for p in partite[:10]:
+            home = p.get('homeTeam', {}).get('name', 'Casa')
+            away = p.get('awayTeam', {}).get('name', 'Fuori')
+            score = p.get('status', {}).get('scoreStr', '0-0')
+            messaggio += f"\n• {home} **{score}** {away}"
+
+        # Invio a Telegram
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                      json={"chat_id": CHAT_ID, "text": messaggio, "parse_mode": "Markdown"})
+        log("Messaggio inviato con successo!")
+
+    except Exception as e:
+        log(f"Errore durante l'analisi: {e}")
+
+# --- CICLO PRINCIPALE ---
+log("Il Gattone è operativo e analizzerà le partite ogni 15 minuti.")
 
 while True:
-    try:
-        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        payload = {"chat_id": CHAT_ID, "text": "🔔 GATTONE: Test di invio forzato!"}
-        r = requests.post(url, json=payload, timeout=10)
-        
-        log_print(f"Risposta Telegram: {r.status_code}")
-        log_print(f"Dettaglio: {r.text}")
-        
-    except Exception as e:
-        log_print(f"ERRORE CRITICO: {e}")
-    
-    time.sleep(30)
-    
+    analizza_partite()
+    # 900 secondi = 15 minuti. Puoi cambiare questo numero.
+    time.sleep(900) 
