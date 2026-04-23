@@ -1,9 +1,17 @@
 import os, requests, time, sys, threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# Server per Render (Health Check)
-threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 10000), type('', (BaseHTTPRequestHandler,), {'do_GET': lambda s: (s.send_response(200), s.end_headers(), s.wfile.write(b"OK"))})).serve_forever(), daemon=True).start()
+# Server per mantenere vivo il bot su Render (Porta 10000)
+def run_health_server():
+    server_address = ('0.0.0.0', 10000)
+    httpd = HTTPServer(server_address, type('', (BaseHTTPRequestHandler,), {
+        'do_GET': lambda s: (s.send_response(200), s.end_headers(), s.wfile.write(b"Gattone OK"))
+    }))
+    httpd.serve_forever()
 
+threading.Thread(target=run_health_server, daemon=True).start()
+
+# Caricamento Variabili d'Ambiente
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 API_KEY = os.getenv("API_KEY")
@@ -12,72 +20,71 @@ def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}"); sys.stdout.flush()
 
 def analizza_partite():
-    # FILTRO NOTTE (00:00 - 07:00)
-    ora_attuale = int(time.strftime("%H"))
-    if 0 <= ora_attuale < 7:
-        log("🌙 Il Gattone dorme (Filtro Notte attivo).")
-        return
-
+    # URL per API-Football (V3)
     url = "https://api-football-v1.p.rapidapi.com/v3/fixtures"
-    headers = {"X-RapidAPI-Key": API_KEY, "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"}
+    headers = {
+        "X-RapidAPI-Key": API_KEY,
+        "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
+    }
+    
+    # Per il test, prendiamo tutte le partite di oggi
+    oggi = time.strftime("%Y-%m-%d")
+    params = {"date": oggi}
     
     try:
-        log("🔍 Analisi match live e ricerca Over...")
-        res = requests.get(url, headers=headers, params={"live": "all"}, timeout=15)
+        log(f"🔍 API-Football: Recupero palinsesto del {oggi}...")
+        res = requests.get(url, headers=headers, params=params, timeout=15)
+        
+        if res.status_code != 200:
+            log(f"❌ Errore API ({res.status_code}): {res.text}")
+            return
+
         data = res.json()
         fixtures = data.get("response", [])
         
         if not fixtures:
-            log("⚠️ Nessun match live al momento."); return
+            log(f"⚠️ Nessun match trovato per la data {oggi}. Controlla la sottoscrizione Basic.")
+            return
 
-        msg = "⚽ **GATTONE LIVE REPORT** ⚽\n"
-        count = 0
+        # Costruzione del messaggio
+        msg = f"⚽ **PALINSESTO DEL GIORNO ({oggi})** ⚽\n"
+        match_count = 0
 
-        for f in fixtures[:25]: # Analizziamo un range più ampio
-            home = f['teams']['home']['name']
-            away = f['teams']['away']['name']
+        # Prendiamo i primi 15 match per non superare i limiti di Telegram
+        for f in fixtures[:15]:
             nazione = f['league']['country']
             lega = f['league']['name']
-            status = f['fixture']['status']['short']
-            elaps = f['fixture']['status']['elapsed']
-            
-            # Gol attuali
-            g_h = f['goals']['home'] if f['goals']['home'] is not None else 0
-            g_a = f['goals']['away'] if f['goals']['away'] is not None else 0
-            total_goals = g_h + g_a
-            
-            # Risultato HT
-            score_ht = f.get('score', {}).get('halftime', {})
-            ht_h = score_ht.get('home') if score_ht.get('home') is not None else 0
-            ht_a = score_ht.get('away') if score_ht.get('away') is not None else 0
+            home = f['teams']['home']['name']
+            away = f['teams']['away']['name']
+            # Estraiamo l'orario (formato ISO: 2026-04-23T15:00:00+00:00)
+            orario = f['fixture']['date'].split('T')[1][:5]
 
-            # Logica Alert
-            alert = ""
-            if status == "1H" and elaps > 20 and total_goals == 0:
-                alert = "⚠️ *Puntare Over 0.5 HT?*"
-            elif status == "2H" and elaps > 65 and total_goals <= 1:
-                alert = "🔥 *Puntare Over FT?*"
+            msg += f"\n🌍 **{nazione}** ({lega})\n"
+            msg += f"• {home} vs {away} - Ore {orario}\n"
+            match_count += 1
 
-            # Costruzione riga messaggio
-            riga = f"\n🌍 **{nazione}** ({lega})\n"
-            riga += f"• {home} **{g_h}-{g_a}** {away} | {elaps}'"
-            
-            if status == "HT": riga += " [INTERVALLO]"
-            if status == "2H": riga += f" (HT: {ht_h}-{ht_a})"
-            if alert: riga += f"\n  {alert}"
-            
-            msg += riga + "\n"
-            count += 1
-
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"})
-        log(f"✅ Inviato report con {count} partite.")
+        # Invio a Telegram
+        telegram_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        response = requests.post(telegram_url, json={
+            "chat_id": CHAT_ID, 
+            "text": msg, 
+            "parse_mode": "Markdown"
+        })
+        
+        if response.status_code == 200:
+            log(f"✅ Inviato report con {match_count} partite su Telegram!")
+        else:
+            log(f"❌ Errore invio Telegram: {response.text}")
 
     except Exception as e:
-        log(f"⚠️ Errore: {e}")
+        log(f"⚠️ Errore critico nel loop: {e}")
 
-log("🚀 Bot API-Football (Paesi/HT/FT) Online!")
+# Messaggio di avvio immediato
+log("🚀 Bot avviato! Invio messaggio di test...")
+analizza_partite()
+
+# Loop infinito ogni 15 minuti
 while True:
-    analizza_partite()
-    # 900 secondi = 15 minuti (96 chiamate al giorno)
     time.sleep(900)
+    analizza_partite()
     
