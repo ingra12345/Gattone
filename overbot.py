@@ -1,7 +1,7 @@
 import os, requests, time, sys, threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# Server di vitalità per Render
+# Server per Render
 threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 10000), type('', (BaseHTTPRequestHandler,), {'do_GET': lambda s: (s.send_response(200), s.end_headers(), s.wfile.write(b"Gattone OK"))})).serve_forever(), daemon=True).start()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -16,50 +16,51 @@ def invia_telegram(testo):
     requests.post(url, json={"chat_id": CHAT_ID, "text": testo, "parse_mode": "Markdown"})
 
 def analizza_partite():
-    # URL CORRETTO per Football Live Score (emir12)
-    # Proviamo l'endpoint generico delle fixture che è il più stabile
-    url = "https://football-live-score2.p.rapidapi.com/matches/fixtures"
+    # URL basato sul tuo test RAW riuscito
+    url = "https://football-live-score2.p.rapidapi.com/matches/results"
     headers = {
         "X-RapidAPI-Key": API_KEY,
         "X-RapidAPI-Host": "football-live-score2.p.rapidapi.com"
     }
     
     try:
-        log("🔍 Analisi in corso...")
-        # Cerchiamo i match di oggi per essere sicuri di ricevere dati
+        log("🔍 Recupero risultati odierni...")
+        # Parametri richiesti dall'API di emir12
         oggi = time.strftime("%Y-%m-%d")
-        res = requests.get(url, headers=headers, params={"date": oggi}, timeout=15)
+        params = {"date": oggi, "edition": "en"}
+        
+        res = requests.get(url, headers=headers, params=params, timeout=15)
         
         if res.status_code != 200:
-            errore_msg = f"❌ Errore API {res.status_code}\nURL: {url}\nControlla se l'endpoint è attivo."
-            log(errore_msg)
-            invia_telegram(errore_msg)
+            invia_telegram(f"❌ Errore {res.status_code} su endpoint results.")
             return
 
         data = res.json()
-        # Gestione flessibile dei dati (alcune API usano 'data', altre 'response', altre la lista diretta)
+        # L'API emir12 restituisce spesso i match in una lista 'data'
         matches = data.get("data", []) if isinstance(data, dict) else data
         
         if not matches:
             log("⚠️ Nessun match trovato per oggi.")
             return
 
-        msg = "⚽ **GATTONE REPORT** ⚽\n"
+        msg = "⚽ **GATTONE REPORT (Risultati)** ⚽\n"
+        count = 0
         for m in matches[:15]:
-            home = m.get('home_team', {}).get('name', 'Home')
-            away = m.get('away_team', {}).get('name', 'Away')
-            status = m.get('status', {}).get('type', 'Ora non nota')
-            msg += f"\n• {home} vs {away}\n  Stato: {status}"
+            home = m.get('home_team', {}).get('name', 'N/A')
+            away = m.get('away_team', {}).get('name', 'N/A')
+            score = m.get('score', '0-0')
+            msg += f"\n• {home} **{score}** {away}"
+            count += 1
 
-        invia_telegram(msg)
-        log("✅ Report inviato con successo!")
+        if count > 0:
+            invia_telegram(msg)
+            log(f"✅ Inviate {count} partite.")
 
     except Exception as e:
-        log(f"⚠️ Errore critico: {e}")
-        invia_telegram(f"⚠️ Errore nel codice: {e}")
+        log(f"⚠️ Errore: {e}")
 
-# Primo tentativo immediato all'avvio
-invia_telegram("🚀 **Bot avviato!** Provo a leggere i dati...")
+# Notifica di riavvio
+invia_telegram("🔄 **Bot aggiornato!** Provo l'endpoint 'results'...")
 analizza_partite()
 
 while True:
