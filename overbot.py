@@ -22,19 +22,61 @@ def analizza_partite():
         
         for f in fixtures:
             tempo = f['fixture']['status']['elapsed']
-            if not tempo or tempo < 10: continue
+            if not tempo: continue
             
             home = f['teams']['home']['name']
             away = f['teams']['away']['name']
-            total_goals = (f['goals']['home'] or 0) + (f['goals']['away'] or 0)
+            g_h = f['goals']['home'] or 0
+            g_a = f['goals']['away'] or 0
+            total_goals = g_h + g_a
             nazione = f['league']['country'].upper()
             lega = f['league']['name']
             
-            # --- RECUPERO STATISTICHE COMBINATE ---
+            # --- RECUPERO STATISTICHE ---
             attacchi_p = 0
             tiri_specchio = 0
             
             stats_list = f.get('statistics', [])
+            if stats_list:
+                for s in stats_list:
+                    for item in s.get('statistics', []):
+                        if item['type'] == 'Dangerous Attacks':
+                            attacchi_p += int(item['value'] or 0)
+                        if item['type'] == 'Shots on Goal':
+                            tiri_specchio += int(item['value'] or 0)
+            
+            apm = round(attacchi_p / tempo, 2)
+
+            # --- FILTRI RICHIESTI ---
+
+            # 1. OVER 0.5 HT (Min 25-42, 0-0, APM >= 1.1 E ALMENO 3 TIRI IN PORTA)
+            if 25 <= tempo <= 42 and total_goals == 0 and apm >= 1.1 and tiri_specchio >= 3:
+                msg = f"🎯 **ELITE OVER 0.5 HT**\n\n"
+                msg += f"🌍 {nazione} - {lega}\n"
+                msg += f"⚽️ {home} vs {away}\n"
+                msg += f"⏰ Minuto: {tempo}'\n"
+                msg += f"🧨 AP/min: {apm} | 🥅 In Porta: {tiri_specchio}\n\n"
+                msg += "🔥 *Filtro: Massima pressione, 3+ tiri nello specchio!*"
+                invia_telegram(msg)
+                time.sleep(2)
+
+            # 2. OVER FINALE (Min 75-86, total gol <= 2, APM >= 1.2 E ALMENO 7 TIRI IN PORTA)
+            elif 75 <= tempo <= 86 and total_goals <= 2 and apm >= 1.2 and tiri_specchio >= 7:
+                msg = f"🚀 **SUPER OVER FINALE**\n\n"
+                msg += f"🌍 {nazione} - {lega}\n"
+                msg += f"⚽️ {home} vs {away}\n"
+                msg += f"⏰ Minuto: {tempo}'\n"
+                msg += f"🧨 AP/min: {apm} | 🥅 In Porta: {tiri_specchio}\n\n"
+                msg += "💰 *Filtro: Assedio totale, 7+ tiri nello specchio!*"
+                invia_telegram(msg)
+                time.sleep(2)
+
+    except Exception as e:
+        print(f"Errore: {e}")
+
+while True:
+    analizza_partite()
+    time.sleep(600)            stats_list = f.get('statistics', [])
             if stats_list:
                 for s in stats_list:
                     for item in s.get('statistics', []):
