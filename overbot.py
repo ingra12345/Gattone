@@ -1,74 +1,77 @@
 import os, requests, time, sys, threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# Server per Render
 threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 10000), type('', (BaseHTTPRequestHandler,), {'do_GET': lambda s: (s.send_response(200), s.end_headers(), s.wfile.write(b"Gattone OK"))})).serve_forever(), daemon=True).start()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 API_KEY = os.getenv("API_KEY")
 
-def log(msg):
-    print(f"[{time.strftime('%H:%M:%S')}] {msg}"); sys.stdout.flush()
-
 def invia_telegram(testo):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": CHAT_ID, "text": testo, "parse_mode": "Markdown"})
+    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={"chat_id": CHAT_ID, "text": testo, "parse_mode": "Markdown"})
 
 def analizza_partite():
     url = "https://v3.football.api-sports.io/fixtures"
     headers = {"x-apisports-key": API_KEY}
     
     try:
-        log("🔍 Ricerca segnali operativi...")
         res = requests.get(url, headers=headers, params={"live": "all"}, timeout=15)
+        if res.status_code != 200: return
         
-        if res.status_code == 200:
-            data = res.json()
-            fixtures = data.get("response", [])
+        fixtures = res.json().get("response", [])
+        
+        for f in fixtures:
+            tempo = f['fixture']['status']['elapsed']
+            if not tempo or tempo < 10: continue
             
-            for f in fixtures:
-                home = f['teams']['home']['name']
-                away = f['teams']['away']['name']
-                g_h = f['goals']['home'] or 0
-                g_a = f['goals']['away'] or 0
-                total = g_h + g_a
-                tempo = f['fixture']['status']['elapsed']
-                nazione = f['league']['country'].upper()
-                lega = f['league']['name']
-                
-                # --- LOGICA SEGNALI SINGOLI ---
-                
-                # 1. ALERT OVER 0.5 HT (0-0 dopo il 25')
-                if 25 <= tempo <= 42 and total == 0:
-                    msg = f"🔥 **SEGNALE OVER 0.5 HT**\n\n"
-                    msg += f"🌍 {nazione} - {lega}\n"
-                    msg += f"⚽️ {home} vs {away}\n"
-                    msg += f"⏰ Minuto: {tempo}'\n"
-                    msg += f"📊 Risultato: {g_h}-{g_a}\n\n"
-                    msg += f"🎯 *Target: Segnare 1 gol prima della fine del primo tempo.*"
-                    invia_telegram(msg)
-                    time.sleep(1) # Piccola pausa per non intasare Telegram
-
-                # 2. ALERT OVER FT (Pochi gol nel finale)
-                elif 70 <= tempo <= 85 and total <= 2:
-                    msg = f"⚠️ **SEGNALE OVER FINALE**\n\n"
-                    msg += f"🌍 {nazione} - {lega}\n"
-                    msg += f"⚽️ {home} vs {away}\n"
-                    msg += f"⏰ Minuto: {tempo}'\n"
-                    msg += f"📊 Risultato: {g_h}-{g_a}\n\n"
-                    msg += f"🎯 *Target: Almeno un altro gol nel finale.*"
-                    invia_telegram(msg)
-                    time.sleep(1)
-
-        else:
-            log(f"Errore API: {res.status_code}")
+            home = f['teams']['home']['name']
+            away = f['teams']['away']['name']
+            total_goals = (f['goals']['home'] or 0) + (f['goals']['away'] or 0)
+            nazione = f['league']['country'].upper()
+            lega = f['league']['name']
             
+            # --- RECUPERO STATISTICHE COMBINATE ---
+            attacchi_p = 0
+            tiri_specchio = 0
+            
+            stats_list = f.get('statistics', [])
+            if stats_list:
+                for s in stats_list:
+                    for item in s.get('statistics', []):
+                        if item['type'] == 'Dangerous Attacks':
+                            attacchi_p += int(item['value'] or 0)
+                        if item['type'] == 'Shots on Goal':
+                            tiri_specchio += int(item['value'] or 0)
+            
+            apm = round(attacchi_p / tempo, 2)
+
+            # --- FILTRI ELITE ---
+
+            # 1. OVER 0.5 HT (Min 25-42, 0-0, APM > 1.1 E almeno 1 tiro in porta)
+            if 25 <= tempo <= 42 and total_goals == 0 and apm >= 1.1 and tiri_specchio >= 1:
+                msg = f"🎯 **BOMBA OVER 0.5 HT**\n\n"
+                msg += f"🌍 {nazione} - {lega}\n"
+                msg += f"⚽️ {home} vs {away}\n"
+                msg += f"⏰ Minuto: {tempo}'\n"
+                msg += f"🧨 AP/min: {apm} | 🥅 In Porta: {tiri_specchio}\n\n"
+                msg += "🔥 *Filtro: Pressione altissima e mira centrata!*"
+                invia_telegram(msg)
+                time.sleep(2)
+
+            # 2. OVER FINALE (Min 75-86, total gol <= 2, APM > 1.2 E almeno 4 tiri in porta totali)
+            elif 75 <= tempo <= 86 and total_goals <= 2 and apm >= 1.2 and tiri_specchio >= 4:
+                msg = f"🚀 **ASSEDIO FINALE - OVER**\n\n"
+                msg += f"🌍 {nazione} - {lega}\n"
+                msg += f"⚽️ {home} vs {away}\n"
+                msg += f"⏰ Minuto: {tempo}'\n"
+                msg += f"🧨 AP/min: {apm} | 🥅 In Porta: {tiri_specchio}\n\n"
+                msg += "💰 *Filtro: Partita caldissima, tiri costanti.*"
+                invia_telegram(msg)
+                time.sleep(2)
+
     except Exception as e:
-        log(f"Errore: {e}")
+        print(f"Errore: {e}")
 
-# Avvio e loop
-log("Gattone pronto a cacciare segnali singoli!")
 while True:
     analizza_partite()
-    time.sleep(600) # Controlla ogni 10 minuti (più reattivo)
+    time.sleep(600)
