@@ -1,17 +1,9 @@
 import os, requests, time, sys, threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# Server per mantenere vivo il bot su Render (Porta 10000)
-def run_health_server():
-    server_address = ('0.0.0.0', 10000)
-    httpd = HTTPServer(server_address, type('', (BaseHTTPRequestHandler,), {
-        'do_GET': lambda s: (s.send_response(200), s.end_headers(), s.wfile.write(b"Gattone OK"))
-    }))
-    httpd.serve_forever()
+# Server di vitalità per Render
+threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 10000), type('', (BaseHTTPRequestHandler,), {'do_GET': lambda s: (s.send_response(200), s.end_headers(), s.wfile.write(b"Gattone OK"))})).serve_forever(), daemon=True).start()
 
-threading.Thread(target=run_health_server, daemon=True).start()
-
-# Caricamento Variabili d'Ambiente
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 API_KEY = os.getenv("API_KEY")
@@ -19,72 +11,50 @@ API_KEY = os.getenv("API_KEY")
 def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}"); sys.stdout.flush()
 
-def analizza_partite():
-    # URL per API-Football (V3)
+def controllo_totale():
+    # Proviamo a connetterci all'API corretta
     url = "https://api-football-v1.p.rapidapi.com/v3/fixtures"
     headers = {
         "X-RapidAPI-Key": API_KEY,
         "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
     }
     
-    # Per il test, prendiamo tutte le partite di oggi
-    oggi = time.strftime("%Y-%m-%d")
-    params = {"date": oggi}
-    
     try:
-        log(f"🔍 API-Football: Recupero palinsesto del {oggi}...")
-        res = requests.get(url, headers=headers, params=params, timeout=15)
+        log("🛰️ Test di connessione con la tua nuova API_KEY...")
+        # Proviamo a vedere se ci sono match live
+        res = requests.get(url, headers=headers, params={"live": "all"}, timeout=15)
         
-        if res.status_code != 200:
-            log(f"❌ Errore API ({res.status_code}): {res.text}")
-            return
-
-        data = res.json()
-        fixtures = data.get("response", [])
+        if res.status_code == 200:
+            data = res.json()
+            fixtures = data.get("response", [])
+            log(f"✅ CONNESSIONE RIUSCITA! Trovati {len(fixtures)} match live.")
+            
+            msg = "🚀 **IL GATTONE È ATTIVO!**\n\n"
+            if not fixtures:
+                msg += "Connessione OK, ma al momento non ci sono match live nel database."
+            else:
+                msg += f"Ho trovato {len(fixtures)} partite in diretta.\nEcco le prime 5:\n"
+                for f in fixtures[:5]:
+                    home = f['teams']['home']['name']
+                    away = f['teams']['away']['name']
+                    msg += f"\n• {home} vs {away}"
+            
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"})
         
-        if not fixtures:
-            log(f"⚠️ Nessun match trovato per la data {oggi}. Controlla la sottoscrizione Basic.")
-            return
-
-        # Costruzione del messaggio
-        msg = f"⚽ **PALINSESTO DEL GIORNO ({oggi})** ⚽\n"
-        match_count = 0
-
-        # Prendiamo i primi 15 match per non superare i limiti di Telegram
-        for f in fixtures[:15]:
-            nazione = f['league']['country']
-            lega = f['league']['name']
-            home = f['teams']['home']['name']
-            away = f['teams']['away']['name']
-            # Estraiamo l'orario (formato ISO: 2026-04-23T15:00:00+00:00)
-            orario = f['fixture']['date'].split('T')[1][:5]
-
-            msg += f"\n🌍 **{nazione}** ({lega})\n"
-            msg += f"• {home} vs {away} - Ore {orario}\n"
-            match_count += 1
-
-        # Invio a Telegram
-        telegram_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        response = requests.post(telegram_url, json={
-            "chat_id": CHAT_ID, 
-            "text": msg, 
-            "parse_mode": "Markdown"
-        })
+        elif res.status_code == 403:
+            log("❌ ERRORE 403: Devi ancora attivare il piano gratuito su RapidAPI!")
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={"chat_id": CHAT_ID, "text": "❌ **ERRORE 403**\nLa tua chiave è corretta, ma devi cliccare su 'Subscribe' (piano $0) nella pagina di API-Football su RapidAPI!"})
         
-        if response.status_code == 200:
-            log(f"✅ Inviato report con {match_count} partite su Telegram!")
         else:
-            log(f"❌ Errore invio Telegram: {response.text}")
+            log(f"⚠️ Errore {res.status_code}: {res.text}")
 
     except Exception as e:
-        log(f"⚠️ Errore critico nel loop: {e}")
+        log(f"⚠️ Errore critico: {e}")
 
-# Messaggio di avvio immediato
-log("🚀 Bot avviato! Invio messaggio di test...")
-analizza_partite()
+# Avvio immediato
+controllo_totale()
 
-# Loop infinito ogni 15 minuti
 while True:
-    time.sleep(900)
-    analizza_partite()
+    time.sleep(900) # Controllo ogni 15 minuti
+    controllo_totale()
     
