@@ -85,5 +85,31 @@ def analizza_partite():
             if 25 <= tempo <= 42 and total_goals == 0 and apm >= 1.1 and tiri_specchio >= 2:
                 msg = (f"🎯 **ELITE OVER 0.5 HT**\n\n"
                        f"🌍 {nazione} - {lega}\n"
-                       f"⚽️ {home} vs {away}\
-                       
+                       f"⚽️ {home} vs {away}\n"
+                       f"⏰ Minuto: {tempo}' | 🧨 AP/m: {apm}\n"
+                       f"🥅 Tiri in porta: {tiri_specchio}\n"
+                       f"🔥 *Pressione alta nel primo tempo!*")
+                invia_telegram(msg)
+                time.sleep(2)
+
+            # 2. ALERT OVER FINALE (Min 75-86, gol <= 2, APM >= 1.2 e 5+ Tiri in porta)
+            elif 75 <= tempo <= 86 and total_goals <= 2 and apm >= 1.2 and tiri_specchio >= 5:
+                msg = (f"🚀 **SUPER OVER FINALE**\n\n"
+                       f"🌍 {nazione} - {lega}\n"
+                       f"⚽️ {home} vs {away}\n"
+                       f"⏰ Minuto: {tempo}' | 🧨 AP/m: {apm}\n"
+                       f"🥅 Tiri in porta: {tiri_specchio}\n"
+                       f"💰 *Assedio finale rilevato!*")
+                invia_telegram(msg)
+                time.sleep(2)
+
+    except Exception as e:
+        print(f"Errore nel ciclo: {e}")
+
+# Messaggio di avvio
+invia_telegram("🤖 **Gattone Online!**\nMonitoraggio attivo (HT 2+ tiri | FT 5+ tiri)\nFrequenza: 12 min")
+
+while True:
+    analizza_partite()
+    # 720 secondi = 12 minuti. Garantisce stabilità e durata dei crediti.
+    time.sleep(720)
