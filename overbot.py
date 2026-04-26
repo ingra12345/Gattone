@@ -34,10 +34,11 @@ def analizza_partite():
     url = "https://api-football-v1.p.rapidapi.com/v3/fixtures"
     
     # HEADERS SPECIFICI PER RAPIDAPI
-    headers = {
+        headers = {
         "X-RapidAPI-Key": API_KEY,
         "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
     }
+
     
     try:
         res = requests.get(url, headers=headers, params={"live": "all"}, timeout=15)
