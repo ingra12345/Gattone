@@ -1,66 +1,70 @@
-import os, requests, time, threading, datetime
+import os, requests, time, threading, datetime, random
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# Server per Render (evita il timeout)
+# Server per mantenere vivo il servizio su Render
 def run_server():
-    class HealthCheckHandler(BaseHTTPRequestHandler):
+    class HealthHandler(BaseHTTPRequestHandler):
         def do_GET(self):
             self.send_response(200)
             self.end_headers()
-            self.wfile.write(b"Gattone RapidAPI Live")
-    server = HTTPServer(('0.0.0.0', 10000), HealthCheckHandler)
+            self.wfile.write(b"Gattone Anti-Ban Online")
+    server = HTTPServer(('0.0.0.0', 10000), HealthHandler)
     server.serve_forever()
 
 threading.Thread(target=run_server, daemon=True).start()
 
+# Configurazione variabili (Assicurati di averle su Render)
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-API_KEY = os.getenv("API_KEY") # Qui devi mettere la X-RapidAPI-Key
+API_KEY = os.getenv("API_KEY")
 
 def invia_telegram(testo):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     try:
         requests.post(url, json={"chat_id": CHAT_ID, "text": testo, "parse_mode": "Markdown"})
-    except: pass
+    except:
+        pass
 
 def analizza_partite():
-    # Filtro Notte (UTC)
-    ora = datetime.datetime.now().hour
-    if ora < 7 or ora >= 22:
-        print(f"🌙 Modalità notte attiva (Ora UTC: {ora})")
+    # --- PROTEZIONE 1: FILTRO ORARIO ---
+    # Lavora dalle 09:00 alle 23:59 ora italiana (circa 07:00-22:00 UTC)
+    ora_utc = datetime.datetime.now().hour
+    if ora_utc < 7 or ora_utc >= 22:
+        print(f"🌙 Ore {ora_utc} UTC: Modalità risparmio attiva.")
         return
 
-    # URL SPECIFICO PER RAPIDAPI
-    url = "https://api-football-v1.p.rapidapi.com/v3/fixtures"
+    url = "https://v3.football.api-sports.io/fixtures"
     
-    # HEADERS SPECIFICI PER RAPIDAPI
-        headers = {
-        "X-RapidAPI-Key": API_KEY,
-        "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
+    # --- PROTEZIONE 2: USER-AGENT (Mascheramento da Browser) ---
+    headers = {
+        "x-apisports-key": API_KEY,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
-
     
     try:
         res = requests.get(url, headers=headers, params={"live": "all"}, timeout=15)
         
-        # Controllo crediti RapidAPI (spesso chiamati 'requests')
-        rem = res.headers.get('X-RateLimit-Requests-Remaining', 'N/D')
-        print(f"✅ Scansione RapidAPI. Crediti rimasti: {rem}")
+        # Monitoraggio crediti residui
+        rimanenti = res.headers.get('x-ratelimit-requests-remaining', 'N/D')
+        print(f"✅ Chiamata effettuata. Crediti API rimasti: {rimanenti}")
 
-        if res.status_code != 200:
-            print(f"Errore RapidAPI: {res.status_code}")
+        if res.status_code == 403 or res.status_code == 429:
+            print("⚠️ Attenzione: API sospesa o crediti finiti.")
             return
-        
+
         fixtures = res.json().get("response", [])
         
         for f in fixtures:
             tempo = f['fixture']['status']['elapsed']
-            if not tempo: continue
+            if not tempo or tempo < 10: continue
             
             home = f['teams']['home']['name']
             away = f['teams']['away']['name']
-            total_goals = (f['goals']['home'] or 0) + (f['goals']['away'] or 0)
+            g_h = f['goals']['home'] or 0
+            g_a = f['goals']['away'] or 0
+            total_goals = g_h + g_a
             
+            # Recupero Statistiche
             attacchi_p = 0
             tiri_specchio = 0
             stats_list = f.get('statistics', [])
@@ -73,20 +77,28 @@ def analizza_partite():
             
             apm = round(attacchi_p / tempo, 2)
 
-            # Filtri HT (2 tiri) e FT (5 tiri)
+            # --- I TUOI FILTRI (HT 2 tiri | FT 5 tiri) ---
+            
+            # OVER 0.5 HT
             if 25 <= tempo <= 42 and total_goals == 0 and apm >= 1.1 and tiri_specchio >= 2:
-                invia_telegram(f"🎯 **RAPID-HT**\n{home} vs {away}\nAPM: {apm} | Tiri: {tiri_specchio}")
-                time.sleep(1)
+                msg = f"🎯 **ELITE HT**\n{home} - {away}\n⏰ {tempo}' | 🧨 AP/m: {apm} | 🥅 Porta: {tiri_specchio}"
+                invia_telegram(msg)
+                time.sleep(2)
 
+            # OVER FINALE
             elif 75 <= tempo <= 86 and total_goals <= 2 and apm >= 1.2 and tiri_specchio >= 5:
-                invia_telegram(f"🚀 **RAPID-FT**\n{home} vs {away}\nAPM: {apm} | Tiri: {tiri_specchio}")
-                time.sleep(1)
+                msg = f"🚀 **SUPER FT**\n{home} - {away}\n⏰ {tempo}' | 🧨 AP/m: {apm} | 🥅 Porta: {tiri_specchio}"
+                invia_telegram(msg)
+                time.sleep(2)
 
     except Exception as e:
         print(f"Errore: {e}")
 
-invia_telegram("🔄 **Gattone switchato su RapidAPI!**\nFrequenza: 12 min")
+# AVVIO CON RITARDO CASUALE (Protezione 3: Anti-Pattern)
+invia_telegram("🤖 **Gattone 3.0 Anti-Ban Attivo!**")
 
 while True:
     analizza_partite()
-    time.sleep(720) # 12 minuti
+    # Aspetta circa 15 minuti (900s) + un ritardo casuale tra 1 e 40 secondi
+    ritardo_variabile = 900 + random.randint(1, 40)
+    time.sleep(ritardo_variabile)
