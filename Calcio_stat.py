@@ -13,9 +13,9 @@ def invia_telegram(testo):
         pass
 
 def analizza_partite():
-    # Filtro Orario (UTC): 07:00 - 23:00
+    # Filtro Orario (UTC): 06:00 - 23:00
     ora = datetime.datetime.now().hour
-    if ora < 7 or ora >= 23:
+    if ora < 6 or ora >= 23:
         print(f"🌙 Ore {ora} UTC: Modalità riposo.")
         return
 
