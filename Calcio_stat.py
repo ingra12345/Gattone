@@ -13,16 +13,17 @@ def invia_telegram(testo):
         pass
 
 def analizza_partite():
-    # Filtro Orario (UTC): 06:00 - 23:00
+    # FILTRO NOTTE (UTC): Lavora dalle 05:00 alle 23:00 (copre 07:00 - 01:00 in Italia)
+    # Impostato a 5 per evitare che il bot si spenga per errore la mattina presto.
     ora = datetime.datetime.now().hour
-    if ora < 6 or ora >= 23:
-        print(f"🌙 Ore {ora} UTC: Modalità riposo.")
+    if ora < 5 or ora >= 23:
+        print(f"🌙 Ore {ora} UTC: Il Gattone dorme per risparmiare crediti.")
         return
 
     url = "https://v3.football.api-sports.io/fixtures"
     headers = {
         "x-apisports-key": API_KEY,
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     
     try:
@@ -44,7 +45,7 @@ def analizza_partite():
             g_a = f['goals']['away'] or 0
             total_goals = g_h + g_a
             
-            # Statistiche
+            # Recupero statistiche
             att_p = 0; tiri = 0
             stats_list = f.get('statistics', [])
             if stats_list:
@@ -55,16 +56,16 @@ def analizza_partite():
             
             apm = round(att_p / tempo, 2)
 
-            # --- FILTRI RITARATI (Più probabili) ---
+            # --- FILTRI RITARATI (Più sensibili) ---
             
-            # HT: Min 25-42, 0-0, APM 0.8+, Almeno 1 tiro in porta
+            # HT: 0-0, Min 25-42, APM 0.8+, Almeno 1 tiro in porta
             if 25 <= tempo <= 42 and total_goals == 0 and apm >= 0.8 and tiri >= 1:
                 msg = (f"🎯 **ELITE HT**\n{home} - {away}\n"
                        f"⏰ {tempo}' | 🧨 APM: {apm} | 🥅 Tiri: {tiri}")
                 invia_telegram(msg)
                 time.sleep(1)
 
-            # FT: Min 75-86, Gol totali <= 2, APM 0.9+, Almeno 2 tiri in porta
+            # FT: Gol totali <= 2, Min 75-86, APM 0.9+, Almeno 2 tiri in porta
             elif 75 <= tempo <= 86 and total_goals <= 2 and apm >= 0.9 and tiri >= 2:
                 msg = (f"🚀 **SUPER FT**\n{home} - {away}\n"
                        f"⏰ {tempo}' | 🧨 APM: {apm} | 🥅 Tiri: {tiri}")
@@ -75,9 +76,10 @@ def analizza_partite():
         print(f"Errore: {e}")
 
 # Avvio
-invia_telegram("🔄 **Gattone aggiornato!**\nFiltri più sensibili attivati.\nA caccia di segnali...")
+invia_telegram("☀️ **Gattone Operativo!**\nFiltri sensibili e pausa 15m attivi.")
 
 while True:
     analizza_partite()
-    # 18 minuti di attesa + jitter
-    time.sleep(1080 + random.randint(1, 30))
+    # Pausa di 15 minuti (900 secondi) + piccolo ritardo casuale per sicurezza
+    time.sleep(900 + random.randint(1, 30))
+    
